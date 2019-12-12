@@ -38,6 +38,7 @@ void MassIntegrator::Setup(const FiniteElementSpace &fes)
    dofs1D = maps->ndof;
    quad1D = maps->nqpt;
    pa_data.SetSize(ne*nq, Device::GetMemoryType());
+/*<<<<<<< HEAD
    double coeff = 1.0;
    if (Q)
    {
@@ -49,10 +50,42 @@ void MassIntegrator::Setup(const FiniteElementSpace &fes)
    if (dim==2)
    {
       const double constant = coeff;
+      =======*/
+   Vector coeff;
+   if (Q == nullptr)
+   {
+      coeff.SetSize(1);
+      coeff(0) = 1.0;
+   }
+   else if (ConstantCoefficient* cQ = dynamic_cast<ConstantCoefficient*>(Q))
+   {
+      coeff.SetSize(1);
+      coeff(0) = cQ->constant;
+   }
+   else
+   {
+      coeff.SetSize(nq * ne);
+      auto C = Reshape(coeff.Write(), nq, ne);
+      for (int e = 0; e < ne; ++e)
+      {
+         ElementTransformation& T = *fes.GetElementTransformation(e);
+         for (int q = 0; q < nq; ++q)
+         {
+            C(q,e) = Q->Eval(T, ir->IntPoint(q));
+         }
+      }
+   }
+   if (dim==1) { MFEM_ABORT("Not supported yet... stay tuned!"); }
+   if (dim==2)
+   {
+//>>>>>>> master
       const int NE = ne;
       const int NQ = nq;
+      const bool const_c = coeff.Size() == 1;
       auto w = ir->GetWeights().Read();
       auto J = Reshape(geom->J.Read(), NQ,2,2,NE);
+      auto C =
+         const_c ? Reshape(coeff.Read(), 1,1) : Reshape(coeff.Read(), NQ,NE);
       auto v = Reshape(pa_data.Write(), NQ, NE);
       MFEM_FORALL(e, NE,
       {
@@ -63,17 +96,24 @@ void MassIntegrator::Setup(const FiniteElementSpace &fes)
             const double J21 = J(q,0,1,e);
             const double J22 = J(q,1,1,e);
             const double detJ = (J11*J22)-(J21*J12);
-            v(q,e) =  w[q] * constant * detJ;
+            const double coeff = const_c ? C(0,0) : C(q,e);
+            v(q,e) =  w[q] * coeff * detJ;
          }
       });
    }
    if (dim==3)
    {
+/*<<<<<<< HEAD
       const double constant = coeff;
+=======
+>>>>>>> master*/
       const int NE = ne;
       const int NQ = nq;
+      const bool const_c = coeff.Size() == 1;
       auto W = ir->GetWeights().Read();
       auto J = Reshape(geom->J.Read(), NQ,3,3,NE);
+      auto C =
+         const_c ? Reshape(coeff.Read(), 1,1) : Reshape(coeff.Read(), NQ,NE);
       auto v = Reshape(pa_data.Write(), NQ,NE);
       MFEM_FORALL(e, NE,
       {
@@ -85,7 +125,8 @@ void MassIntegrator::Setup(const FiniteElementSpace &fes)
             const double detJ = J11 * (J22 * J33 - J32 * J23) -
             /* */               J21 * (J12 * J33 - J32 * J13) +
             /* */               J31 * (J12 * J23 - J22 * J13);
-            v(q,e) = W[q] * constant * detJ;
+            const double coeff = const_c ? C(0,0) : C(q,e);
+            v(q,e) = W[q] * coeff * detJ;
          }
       });
    }
@@ -747,7 +788,7 @@ static void PAMassApply(const int dim,
 #ifndef MFEM_USE_JIT
    if (dim == 2)
    {
-      switch ((D1D << 4 ) | Q1D)
+      switch ((D1D << 4) | Q1D)
       {
          case 0x22: return SmemPAMassApply2D<2,2,16>(NE, B, op, x, y);
          case 0x33: return SmemPAMassApply2D<3,3,16>(NE, B, op, x, y);
@@ -762,7 +803,7 @@ static void PAMassApply(const int dim,
    }
    else if (dim == 3)
    {
-      switch ((D1D << 4 ) | Q1D)
+      switch ((D1D << 4) | Q1D)
       {
          case 0x23: return SmemPAMassApply3D<2,3>(NE, B, op, x, y);
          case 0x34: return SmemPAMassApply3D<3,4>(NE, B, op, x, y);
