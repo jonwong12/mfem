@@ -230,9 +230,25 @@ void CVODESolver::Init(TimeDependentOperator &f_)
       // Temporarly set N_Vector wrapper data to create CVODE. The correct
       // initial condition will be set using CVodeReInit() when Step() is
       // called.
-      Vector mfem_y(local_size);
-      mfem_y.ToNVector(y, global_size);
 
+      if (!Parallel())
+      {
+         NV_LENGTH_S(y) = local_size;
+         NV_DATA_S(y)   = new double[local_size](); // value-initialize
+      }
+      else
+      {
+#ifdef MFEM_USE_MPI
+         NV_LOCLENGTH_P(y)  = local_size;
+         NV_GLOBLENGTH_P(y) = global_size;
+         saved_global_size  = global_size;
+         NV_DATA_P(y)       = new double[local_size](); // value-initialize
+#endif
+      }
+
+      // Vector mfem_y(local_size);
+      // mfem_y.ToNVector(y, global_size);
+     
       // Create CVODE
       sundials_mem = CVodeCreate(lmm_type);
       MFEM_VERIFY(sundials_mem, "error in CVodeCreate()");
@@ -261,7 +277,19 @@ void CVODESolver::Init(TimeDependentOperator &f_)
 void CVODESolver::Step(Vector &x, double &t, double &dt)
 {
 
-   x.ToNVector(y);
+     if (!Parallel())
+   {
+      NV_DATA_S(y) = x.GetData();
+      MFEM_VERIFY(NV_LENGTH_S(y) == x.Size(), "");
+   }
+   else
+   {
+#ifdef MFEM_USE_MPI
+      NV_DATA_P(y) = x.GetData();
+      MFEM_VERIFY(NV_LOCLENGTH_P(y) == x.Size(), "");
+#endif
+   }
+   // x.ToNVector(y);
 
    // Reinitialize CVODE memory if needed
    if (reinit)
@@ -510,8 +538,6 @@ void CVODESSolver::InitB(TimeDependentAdjointOperator &f_)
    // Get current time
    double tB = f_.GetTime();
 
-   Vector mfem_yB(local_size);
-   mfem_yB = 0.;
    long global_size = 0;
 #ifdef MFEM_USE_MPI
    if (Parallel())
@@ -520,7 +546,25 @@ void CVODESSolver::InitB(TimeDependentAdjointOperator &f_)
                     NV_COMM_P(yB));
    }
 #endif
-   mfem_yB.ToNVector(yB, global_size);
+
+   if (!Parallel())
+     {
+       NV_LENGTH_S(yB) = local_size;
+       NV_DATA_S(yB)   = new double[local_size](); // value-initialize
+     }
+   else
+     {
+#ifdef MFEM_USE_MPI
+       NV_LOCLENGTH_P(yB)  = local_size;
+       NV_GLOBLENGTH_P(yB) = global_size;
+       saved_global_size  = global_size;
+       NV_DATA_P(yB)       = new double[local_size](); // value-initialize
+
+//       yB = N_VNew_Parallel(MPI_COMM_WORLD, local_size, global_size);
+       cout << NV_LOCLENGTH_P(yB) << " " << NV_GLOBLENGTH_P(yB) << " " << NV_DATA_P(yB) << endl;
+#endif
+     }
+
 
    // Create the solver memory
    flag = CVodeCreateB(sundials_mem, CV_BDF, &indexB);
@@ -779,7 +823,20 @@ void CVODESSolver::Step(Vector &x, double &t, double &dt)
 
 void CVODESSolver::StepB(Vector &xB, double &tB, double &dtB)
 {
-   xB.ToNVector(yB);
+   if (!Parallel())
+   {
+      NV_DATA_S(yB) = xB.GetData();
+      MFEM_VERIFY(NV_LENGTH_S(yB) == xB.Size(), "");
+   }
+   else
+   {
+#ifdef MFEM_USE_MPI
+      NV_DATA_P(yB) = xB.GetData();
+      MFEM_VERIFY(NV_LOCLENGTH_P(yB) == xB.Size(), "");
+#endif
+   }
+  
+  //   xB.ToNVector(yB);
 
    // Reinitialize CVODE memory if needed
    if (reinit)
